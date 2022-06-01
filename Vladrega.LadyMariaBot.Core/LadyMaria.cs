@@ -8,21 +8,24 @@ using TwitchLib.Api.Core;
 using TwitchLib.Api.Services;
 using TwitchLib.Api.Services.Events.LiveStreamMonitor;
 
-namespace Vladrega.LadyMariaBot.Core.Telegram;
+namespace Vladrega.LadyMariaBot.Core;
 
 public sealed class LadyMaria
 {
     private readonly TelegramBotClient _telegramBotClient;
+    private readonly Dictionary<string, long[]> _streamers;
 
-    public LadyMaria(string telegramBotToken, string twitchApiToken, string twitchApiClientId)
+    public LadyMaria(Dictionary<string, long[]> streamers, string telegramBotToken, string twitchApiToken, string twitchApiClientId, IUpdateHandler updateHandler, ILoggerFactory loggerFactory)
     {
+        _streamers = streamers;
         _telegramBotClient = new TelegramBotClient(telegramBotToken);
-        _telegramBotClient.StartReceiving<TelegramBotMessageHandler>(new ReceiverOptions
+        _telegramBotClient.StartReceiving(updateHandler, new ReceiverOptions
         {
             AllowedUpdates = new []
             {
                UpdateType.Message,
-               UpdateType.EditedMessage
+               UpdateType.EditedMessage,
+               UpdateType.CallbackQuery
             }
         });
 
@@ -31,10 +34,10 @@ public sealed class LadyMaria
         {
             Secret = twitchApiToken,
             ClientId = twitchApiClientId
-        }), checkIntervalInSeconds: 5);
-
+        }, loggerFactory: loggerFactory), checkIntervalInSeconds: 5);
+        
         liveStreamMonitor.OnStreamOnline += OnStreamOnline;
-        liveStreamMonitor.SetChannelsByName(new List<string> {"vladrega"});
+        liveStreamMonitor.SetChannelsByName(streamers.Keys.ToList());
         liveStreamMonitor.Start();
     }
 
@@ -48,11 +51,19 @@ public sealed class LadyMaria
         
         stringBuilder.AppendLine("<strong>👋 Всем привет, стрим начался!</strong>");
         stringBuilder.AppendLine();
-        stringBuilder.AppendLine($"<strong>🕹️ Сегодня трансляция по:</strong> {game}");
-        stringBuilder.AppendLine($"<strong>💬 Описание</strong>: {title}");
+        stringBuilder.AppendLine($"<strong>🎮️ Сегодня трансляция по:</strong> {game}");
+        stringBuilder.AppendLine($"<strong>💻 Описание</strong>: {title}");
         stringBuilder.AppendLine();
         stringBuilder.AppendLine(streamUrl);
-        
-        await _telegramBotClient.SendTextMessageAsync(-1001759565168, stringBuilder.ToString(), ParseMode.Html);
+
+        var message = stringBuilder.ToString();
+
+        if (!_streamers.TryGetValue(onlineArgs.Stream.UserName, out var telegramGroupIds))
+            return;
+
+        foreach (var telegramGroupId in telegramGroupIds)
+        {
+            await _telegramBotClient.SendTextMessageAsync(telegramGroupId, message, ParseMode.Html);            
+        }
     }
 }

@@ -9,4 +9,6 @@ public class Settings
     public string TwitchApiAccessToken { get; init; }
     
     public string TwitchApiClientId { get; init; }
+
+    public Dictionary<string, long[]> Streamers { get; init; }
 }
